@@ -1,0 +1,87 @@
+def JohnsonSaltykov(A):
+    d = []
+    for a in A:
+        d.append(sqrt(4*a/pi)) # diameter of circle with equivalent area
+    #sint8['Diameter'] = d
+    NPT = len(d) # number of grains
+    totA = sum(A)/1000**2 # Total area in mm^2 (converting from microns^2 to mm^2)
+    A = sorted(A)
+    d = sorted(d)
+
+    # CALCULATE DISTRIBUTION OF SECTION DIAMETERS AND AREAS FOR UNIFORM SPHERE DISTRIBUTION (SIMILAR TO TABLE 6-5 OF UNDERWOOD 1968)
+    big = 10000 # Johnson-Saltykov defines maximum grain diameter as 1000 (why 10,000 here?)
+    edgeh = np.arange(log(10**0.1),log(big)+0.1,log(10**0.1)) #high edges of bins (aka groups) - log10 is not used here as Johnson-Saltykov does - this produces 40 groups instead of 30 which extends the range of grain sizes
+    edgel = np.arange(0,log(big),log(10**0.1)) #low edges of bins (aka groups)
+    maxbin = len(edgeh)-1 #index of largest group
+    dh = exp(edgeh) #2D section high grain diameter, d(i)
+    big = dh[maxbin] #high grain diameter for current largest bin(maxbin) (start from largest group and work down)
+    dl = exp(edgel) #2D section low grain diameter, d(i-1)
+    areah = pi*((dh/2)**2) #2D section high grain area for bins
+    areal = pi*((dl/2)**2) #2D section low grain area for bins
+    bins = edgeh-0.5*log(10**0.1) #2D section average grain diameter for bins
+    vol = (4*pi/3)*(0.5*(exp(bins)))**3 #average grain volumes based on 2D diameters
+    h = ((sqrt(big**2-dl**2)-sqrt(big**2-dh**2))/2) #heights of slices
+    prob = h/(big/2) #fraction/probability of total number of 2D sections by group (if specimen is made up only of largest particles - start from largest group and work down)
+    hl = ((sqrt(big**2-(dl**2)))/2) #low slice height
+    hh = ((sqrt(big**2-(dh**2)))/2) #high slice height
+    V1 = (pi/6*((big/2)-hl)*(3*(dl/2)**2+((big/2)-hl)**2)) #volume of spherical cap
+    V2 = (pi/6*((big/2)-hh)*(3*(dh/2)**2+((big/2)-hh)**2))
+    V = V2-V1 #volume of slice
+    area = V/h #average area of 2D sections in each group (in micron^2?)
+    prod = prob*area #probability of slicing sphere with diameter 'big' a distance 'h' from center multiplied by area of the (2D) section produced - simply called 'product' in Underwood (1968)
+    factor = prod/sum(prod) #volumetric fraction (percent by volume) in each class, aka relative area (as percent) occupied by 2D sections of group
+
+
+    # SORT GRAINS INTO GROUPS
+    adist=zeros(size(edgeh)) #matrix of zeros the size of bin list (edgeh)
+    ndist=zeros(size(edgeh))
+    #G=histcounts(d,dl) #d=data, dl=bin ranges
+    i=0
+    for j in np.arange(0,maxbin): #maxbin is index of largest bin
+        while i<NPT and d[i]<dh[j]: #NPT is # of grains, d(i) is diameter derived from A, dh(j) is max diameter in bin j
+            adist[j]=adist[j]+A[i]; #total cumulative area of grains in bin j
+            ndist[j]=ndist[j]+1 #total cumulative number of grains in bin j
+            i=i+1
+    k=find(ndist) #find non zero terms (indexes for only bins that contain grains)
+    aveA=adist[k]/ndist[k] #average grain area per group in microns^2 - this differs from 'area' above, which is average area for the group range
+    Na=ndist[k]/totA #number of grains in each group divided by total area - Underwood (1968) defines Na as number of sections per mm^2
+    Aa=100*(Na*aveA)/1000**2 #fraction of grain area in each group - this is the same as (adist[k]/sum(A))*100
+    bins=bins[k] #list of 2D section average grain diameter (but now only includes bins with grains)
+    adist=adist[k] #list of total area of grains in each bin
+    ndist=ndist[k] #list total number of grains in each bin
+
+    
+    # CALCULATE VOLUMETRIC DISTRIBUTION
+    Vv=Aa/factor[maxbin] #Aa (mean 2D section area) / factor(maxbin) = volume percent of particles in largest group
+    Nv=ndist/prob[maxbin] #ndist is number of grains in group, prob(maxbin) is fraction/probability of total number of 2D sections in group maxbin
+    n=1
+    for m in np.arange(1,len(Na)): #length(Na) should be number of bins containing grains, not sure why it starts with 2
+        j=len(Na)-1-m #counts backwards from second largest group with grains (we've already calculated pd for largest group above)
+        n=n+1
+        p=maxbin-1
+        for i in np.arange(1,n): #range of i increases by 1 when j decreases by 1 - i is the index for sections, j is index for particles
+            Vv[j]=Vv[j]-(Aa[j+i]*factor[p]/factor[maxbin]) #general equation for Johnson-Saltykov method (equation 6-25) - subtracts off grains that belong in larger bins
+            Nv[j]=Nv[j]-(ndist[j+i]*prob[p]/prob[maxbin]) #number of particles per mm^3
+            p=p-1 #counts backwards from highest bin number but resets again when it loops back through the first if statement
+    #Vvol=Nv*vol[k] #Nv = number of particles per mm^3, vol(k) = average grain volumes based on 2D diameters - never used
+    sumVv=sum(Vv) #total particle volume expressed as fraction (should be near 100%)
+    dvbar=sum((exp(bins))*Vv)/sumVv #bins is average grain diameters for groups, Vv is volume percent per group; average volume per group (as a fraction)
+    pd=(Vv/sumVv)/log(10**0.1)#*log10(exp(10)) = 4.3429; log10(exp(10))=10/log(10)=1/log(10**0.1); 
+    #Vv is volume probability (out of ~100) of each group, i.e. fraction (x100) of total volume that falls into each bin; sum(Vv) should equal 1 (x100)
+    Vv=Vv/sumVv*100 #percent of volume - same as pd but are percentages and are not logarithmic
+    sumAdist=sum(adist) #total grain area
+    #adist=adist/sumAdist*100 #fraction of grain area in each group - this is equal to Aa
+    histarea=sum(Vv*log(10**0.1))
+    
+    dbar=mean(d) #mean grain diameter (single number)
+    #dabar=sqrt(4*mean(A)/pi) #mean grain area (single number)
+    
+    # CREATE LIST OF GRAIN DIAMETERS DERIVED FROM VOLUMES FOR THE NUMBER OF OUTLINED GRAINS
+    number_grains = pd*log(10**0.1)*NPT #pd*log(10**0.1)*NPT
+    grain_diams = bins #exp(bins)
+    grains = []
+    for i in arange(len(grain_diams)):
+        grains.extend(np.repeat([grain_diams[i]],round(number_grains[i])))
+
+#             0           1              2  3     4    5         6                       7                     8         9
+    return (bins,Aa/(100*log(10**0.1)),pd,dbar,dvbar,NPT,median(exp(grains)),round(np.std(exp(grains)),5),len(grains),grains)
